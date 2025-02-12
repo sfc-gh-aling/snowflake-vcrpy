@@ -21,6 +21,7 @@ setup(
         "six>=1.5",
         "yarl",
         "pytest",
+        "vcrpy",
     ],
     extras_require={
         "development": ["snowflake-connector-python[pandas]"],

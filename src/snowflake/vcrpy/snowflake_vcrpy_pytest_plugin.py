@@ -1,16 +1,17 @@
-import pytest
 import os
 import urllib.parse
-from ._vendored.vcrpy import VCR
+
+import pytest
+from vcr import VCR
+
 from ._constant import (
+    SNOWFLAKE_CREDENTIAL_HEADER_FIELDS,
+    SNOWFLAKE_DB_RELATED_FIELDS_IN_QUERY,
+    SNOWFLAKE_REQUEST_ID_STRINGS,
+    VOID_STRING,
     SnowflakeRecordMode,
     VcrpyRecordMode,
-    SNOWFLAKE_REQUEST_ID_STRINGS,
-    SNOWFLAKE_DB_RELATED_FIELDS_IN_QUERY,
-    SNOWFLAKE_CREDENTIAL_HEADER_FIELDS,
-    VOID_STRING,
 )
-
 
 # Internal switch controlling _process_request_recording to scrub information or not
 _SCRUB_SNOWFLAKE_INFO = True
@@ -28,7 +29,12 @@ def _process_request_recording(request):
                 key in SNOWFLAKE_REQUEST_ID_STRINGS
                 or key in SNOWFLAKE_DB_RELATED_FIELDS_IN_QUERY
             ):
-                request.uri = request.uri.replace(urllib.parse.quote_plus(value) if request.uri.find(value) == -1 else value, VOID_STRING)
+                request.uri = request.uri.replace(
+                    urllib.parse.quote_plus(value)
+                    if request.uri.find(value) == -1
+                    else value,
+                    VOID_STRING,
+                )
         # scrub snowflake account information
         if request.host.endswith(".snowflakecomputing.com"):
             account = request.host.split(".snowflakecomputing.com")[0]
@@ -61,6 +67,12 @@ def _process_response_recording(response):
     return response
 
 
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "snowflake_vcr: Mark the test as using Snowflake VCR."
+    )
+
+
 @pytest.fixture(autouse=True)
 def _snowflake_vcr_marker(request):
     snowflake_record_mode = request.config.getoption(
@@ -70,7 +82,7 @@ def _snowflake_vcr_marker(request):
     if snowflake_record_mode == SnowflakeRecordMode.ALL or (
         snowflake_record_mode == SnowflakeRecordMode.ANNOTATED and marker
     ):
-        request.getfixturevalue("vcr_cassette")
+        request.getfixturevalue("snowflake_vcr_cassette")
     else:
         return
 
@@ -116,7 +128,7 @@ def pytest_addoption(parser):
 
 
 @pytest.fixture
-def vcr_cassette(request, snowflake_vcr, snowflake_vcr_cassette_name):
+def snowflake_vcr_cassette(request, snowflake_vcr, snowflake_vcr_cassette_name):
     kwargs = {}
     _update_kwargs(request, kwargs)
     with snowflake_vcr.use_cassette(snowflake_vcr_cassette_name, **kwargs) as cassette:
@@ -133,7 +145,7 @@ def snowflake_vcr(request, snowflake_vcr_cassette_dir, snowflake_vcr_config):
         filter_headers=SNOWFLAKE_CREDENTIAL_HEADER_FIELDS
         if _SCRUB_SNOWFLAKE_INFO
         else [],
-        **(snowflake_vcr_config or {})
+        **(snowflake_vcr_config or {}),
     )
     _update_kwargs(request, kwargs)
     vcr = VCR(**kwargs)
